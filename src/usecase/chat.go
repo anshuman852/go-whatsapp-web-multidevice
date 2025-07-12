@@ -2,7 +2,12 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	domainChat "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/chat"
@@ -44,6 +49,61 @@ func (service serviceChat) ListChats(ctx context.Context, request domainChat.Lis
 		return response, err
 	}
 
+	// --- PUSH NAME JSON ENRICHMENT ---
+	pushNameMap := make(map[string]string)
+	// Find the latest PUSH_NAME.json file in storages dir
+	storagesDir := "src/storages"
+	files, err := ioutil.ReadDir(storagesDir)
+	if err == nil {
+		var latestFile string
+		var latestModTime int64
+		for _, f := range files {
+			if strings.HasSuffix(f.Name(), "PUSH_NAME.json") {
+				fullPath := filepath.Join(storagesDir, f.Name())
+				if info, err := os.Stat(fullPath); err == nil {
+					if info.ModTime().Unix() > latestModTime {
+						latestModTime = info.ModTime().Unix()
+						latestFile = fullPath
+					}
+				}
+			}
+		}
+		if latestFile != "" {
+			type PushNameEntry struct {
+				ID       string `json:"ID"`
+				PushName string `json:"pushname"`
+			}
+			type PushNameFile struct {
+				PushNames []PushNameEntry `json:"pushnames"`
+			}
+			b, err := ioutil.ReadFile(latestFile)
+			if err == nil {
+				var pn PushNameFile
+				if err := json.Unmarshal(b, &pn); err == nil {
+					for _, entry := range pn.PushNames {
+						if entry.ID != "" && entry.PushName != "" {
+							pushNameMap[entry.ID] = entry.PushName
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Fetch contacts map (jid string -> name string)
+	contactsMap := make(map[string]string)
+	client := whatsapp.GetClient()
+	if client != nil && client.Store != nil && client.Store.Contacts != nil {
+		contacts, err := client.Store.Contacts.GetAllContacts(ctx)
+		if err == nil {
+			for jid, contact := range contacts {
+				if contact.FullName != "" {
+					contactsMap[jid] = contact.FullName
+				}
+			}
+		}
+	}
+
 	// Get total count for pagination
 	totalCount, err := service.chatStorageRepo.Repository().GetTotalChatCount()
 	if err != nil {
@@ -52,12 +112,19 @@ func (service serviceChat) ListChats(ctx context.Context, request domainChat.Lis
 		totalCount = 0
 	}
 
-	// Convert entities to domain objects
+	// Convert entities to domain objects, enrich with pushname/contact name if available
 	chatInfos := make([]domainChat.ChatInfo, 0, len(chats))
 	for _, chat := range chats {
+		chatName := chat.Name
+		// Prefer pushname if available
+		if pushNameMap[chat.JID] != "" {
+			chatName = pushNameMap[chat.JID]
+		} else if (chatName == "" || chatName == chat.JID || (strings.Contains(chat.JID, "@") && chatName == chat.JID[:strings.Index(chat.JID, "@")])) && contactsMap[chat.JID] != "" {
+			chatName = contactsMap[chat.JID]
+		}
 		chatInfo := domainChat.ChatInfo{
 			JID:                 chat.JID,
-			Name:                chat.Name,
+			Name:                chatName,
 			LastMessageTime:     chat.LastMessageTime.Format(time.RFC3339),
 			EphemeralExpiration: chat.EphemeralExpiration,
 			CreatedAt:           chat.CreatedAt.Format(time.RFC3339),

@@ -140,6 +140,7 @@
     </div>
 
     <div class="ui three column doubling grid cards">
+        <chat-history></chat-history>
         <chat-pin-manager></chat-pin-manager>
     </div>
 
@@ -216,6 +217,7 @@
     import AccountUserCheck from "./components/AccountUserCheck.js";
     import AccountBusinessProfile from "./components/AccountBusinessProfile.js";
     import ChatPinManager from "./components/ChatPinManager.js";
+    import ChatHistory from "./components/ChatHistory.js";
 
     const showErrorInfo = (message) => {
         $('body').toast({
@@ -255,7 +257,8 @@
             GroupList, GroupCreate, GroupJoinWithLink, GroupAddParticipants, GroupSetPhoto, GroupSetName, GroupSetLocked, GroupSetAnnounce, GroupSetTopic,
             NewsletterList,
             AccountAvatar, AccountUserInfo, AccountPrivacy, AccountChangeAvatar, AccountContact, AccountChangePushName, AccountUserCheck, AccountBusinessProfile,
-            ChatPinManager
+            ChatPinManager,
+            ChatHistory
         },
         delimiters: ['[[', ']]'],
         data() {
